@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Breathing Box Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #f8fafc; /* Slate 50 */
+            transition: background-color 0.5s ease;
+            touch-action: none;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body.dark-mode {
+            background-color: #0f172a; /* Slate 900 */
+        }
+
+        /* Controls Container */
+        #ui-container {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 360px;
+            z-index: 20;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        #ui-container.hidden-ui {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(-50%) translateY(20px);
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 24px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        body.dark-mode .glass-panel {
+            background: rgba(30, 41, 59, 0.85);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Custom Inputs */
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .control-label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #334155;
+        }
+        
+        body.dark-mode .control-label {
+            color: #e2e8f0;
+        }
+
+        select {
+            background: transparent;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        body.dark-mode select {
+            border-color: #475569;
+            color: #e2e8f0;
+        }
+        
+        body.dark-mode select option {
+            background-color: #1e293b;
+            color: #e2e8f0;
+        }
+
+        /* Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #cbd5e1;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px; width: 18px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider { background-color: #3b82f6; }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        /* Range Slider */
+        input[type=range] {
+            width: 100%;
+            height: 6px;
+            background: #cbd5e1;
+            border-radius: 5px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        body.dark-mode input[type=range] { background: #475569; }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px; height: 18px;
+            background: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        /* Overlay Messages */
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        #overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(5px);
+        }
+        .modal {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        body.dark-mode .modal {
+            background: #1e293b;
+            color: white;
+        }
+
+        #tap-hint {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.8rem;
+            opacity: 0.7;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .hidden-ui #tap-hint { opacity: 0; }
+
+    </style>
+</head>
+<body>
+
+    <div id="tap-hint">Tap screen to hide controls</div>
+    <canvas id="canvas"></canvas>
+
+    <!-- Completion Overlay -->
+    <div id="overlay">
+        <div class="modal">
+            <h2 class="text-2xl font-bold mb-2">Session Complete</h2>
+            <p class="mb-6 opacity-80">Well done.</p>
+            <button onclick="resetSession()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-full transition">
+                Start Again
+            </button>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div id="ui-container">
+        <div class="glass-panel">
+            
+            <!-- Technique Selector -->
+            <div class="control-row">
+                <label class="control-label">Pattern</label>
+                <select id="techniqueSelect">
+                    <option value="box">Box (4-4-4-4)</option>
+                    <option value="478">Relax (4-7-8)</option>
+                </select>
+            </div>
+
+            <!-- Timer Selector -->
+            <div class="control-row">
+                <label class="control-label">Timer</label>
+                <select id="timerSelect">
+                    <option value="0">Infinite</option>
+                    <option value="60000">1 Minute</option>
+                    <option value="120000">2 Minutes</option>
+                    <option value="300000">5 Minutes</option>
+                </select>
+            </div>
+
+            <!-- Speed Slider (Only for Box) -->
+            <div id="speedControl" class="w-full">
+                <div class="flex justify-between mb-2">
+                    <label class="control-label">Speed</label>
+                    <span id="speedValue" class="text-xs opacity-60">4s / phase</span>
+                </div>
+                <input type="range" id="speedSlider" min="2" max="6" step="0.5" value="4">
+            </div>
+
+            <!-- Toggles Row -->
+            <div class="flex justify-between gap-4">
+                
+                <!-- Audio Toggle -->
+                <div class="flex flex-col items-center gap-1">
+                    <span class="text-xs font-semibold opacity-70">Sound</span>
+                    <label class="switch">
+                        <input type="checkbox" id="audioToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Haptic Toggle -->
+                <div class="flex flex-col items-center gap-1">
+                    <span class="text-xs font-semibold opacity-70">Haptics</span>
+                    <label class="switch">
+                        <input type="checkbox" id="hapticToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Dark Mode Toggle -->
+                <div class="flex flex-col items-center gap-1">
+                    <span class="text-xs font-semibold opacity-70">Dark</span>
+                    <label class="switch">
+                        <input type="checkbox" id="darkModeToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- Setup & Contexts ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // --- Web Audio Context (Lazy Load) ---
+        let audioCtx = null;
+        
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playTone(freq, type = 'sine') {
+            if (!document.getElementById('audioToggle').checked || !audioCtx) return;
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            
+            // Envelope (Attack -> Decay)
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 1.5);
+        }
+
+        // --- Configuration & State ---
+        let width, height;
+        const baseSize = 100;
+        const growthRange = 180;
+        
+        let currentState = {
+            technique: 'box', // 'box' or '478'
+            phaseDuration: 4000, // Used for Box
+            startTime: null,
+            sessionEnd: 0,
+            active: true,
+            phaseIndex: -1
+        };
+
+        const techniques = {
+            box: {
+                phases: [
+                    { name: "Breathe In", durMult: 1, type: 'in' },
+                    { name: "Hold", durMult: 1, type: 'hold' },
+                    { name: "Breathe Out", durMult: 1, type: 'out' },
+                    { name: "Hold", durMult: 1, type: 'hold' }
+                ],
+                color: 'rgba(147, 197, 253, 0.6)'
+            },
+            '478': {
+                phases: [
+                    { name: "Breathe In", durMult: 4000, type: 'in' }, // Fixed 4s
+                    { name: "Hold", durMult: 7000, type: 'hold' }, // Fixed 7s
+                    { name: "Breathe Out", durMult: 8000, type: 'out' } // Fixed 8s
+                ],
+                color: 'rgba(167, 243, 208, 0.6)' // Greenish for 4-7-8
+            }
+        };
+
+        const themes = {
+            light: { bg: '#f8fafc', box: null, text: '#334155', orb: '#2563eb' },
+            dark: { bg: '#0f172a', box: null, text: '#e2e8f0', orb: '#60a5fa' }
+        };
+
+        // --- Helpers ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        function easeInOutSine(x) {
+            return -(Math.cos(Math.PI * x) - 1) / 2;
+        }
+
+        // --- Drawing Logic ---
+        function drawRoundedRectPath(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+        }
+
+        function getPointOnRect(t, x, y, w, h) {
+            // Map 0-1 to perimeter position. Simple approximation for visual effect.
+            // Perimeter ~ 2w + 2h (ignoring corners for simplicity of orb movement math)
+            const p = 2 * (w + h);
+            const d = t * p;
+
+            if (d < w) return { x: x + d, y: y }; // Top
+            if (d < w + h) return { x: x + w, y: y + (d - w) }; // Right
+            if (d < 2 * w + h) return { x: x + w - (d - (w + h)), y: y + h }; // Bottom
+            return { x: x, y: y + h - (d - (2 * w + h)) }; // Left
+        }
+
+        // --- Main Animation Loop ---
+        function animate(timestamp) {
+            if (!currentState.active) return;
+            if (!currentState.startTime) currentState.startTime = timestamp;
+
+            // Timer Logic
+            if (currentState.sessionEnd > 0 && Date.now() > currentState.sessionEnd) {
+                currentState.active = false;
+                document.getElementById('overlay').classList.add('visible');
+                playTone(440, 'sine'); // End chime
+                return;
+            }
+
+            const elapsed = timestamp - currentState.startTime;
+            
+            // Calculate Cycle Physics
+            const tech = techniques[currentState.technique];
+            let cycleDuration = 0;
+            
+            if (currentState.technique === 'box') {
+                cycleDuration = currentState.phaseDuration * 4;
+            } else {
+                cycleDuration = 19000; // 4+7+8 = 19s fixed
+            }
+
+            const cycleProgress = elapsed % cycleDuration;
+            
+            // Determine Phase
+            let currentPhase = 0;
+            let phaseTime = 0;
+            let accumTime = 0;
+
+            if (currentState.technique === 'box') {
+                currentPhase = Math.floor(cycleProgress / currentState.phaseDuration);
+                phaseTime = (cycleProgress % currentState.phaseDuration) / currentState.phaseDuration;
+            } else {
+                // Manual check for 4-7-8
+                if (cycleProgress < 4000) {
+                    currentPhase = 0;
+                    phaseTime = cycleProgress / 4000;
+                } else if (cycleProgress < 11000) { // 4+7
+                    currentPhase = 1;
+                    phaseTime = (cycleProgress - 4000) / 7000;
+                } else {
+                    currentPhase = 2;
+                    phaseTime = (cycleProgress - 11000) / 8000;
+                }
+            }
+
+            // Phase Change Triggers (Haptics/Audio)
+            if (currentPhase !== currentState.phaseIndex) {
+                currentState.phaseIndex = currentPhase;
+                
+                // Haptic
+                if (document.getElementById('hapticToggle').checked) {
+                    navigator.vibrate(50);
+                }
+
+                // Audio
+                const phaseType = tech.phases[currentPhase].type;
+                if (phaseType === 'in') playTone(300, 'sine'); // Low
+                if (phaseType === 'hold') playTone(400, 'sine'); // Mid
+                if (phaseType === 'out') playTone(250, 'sine'); // Deep
+            }
+
+            // --- Render ---
+            ctx.clearRect(0, 0, width, height);
+            
+            const isDark = document.body.classList.contains('dark-mode');
+            const theme = isDark ? themes.dark : themes.light;
+
+            // 1. Calculate Scale
+            let scaleFactor = 0;
+            const pType = tech.phases[currentPhase].type;
+
+            if (pType === 'in') scaleFactor = easeInOutSine(phaseTime);
+            else if (pType === 'hold') scaleFactor = (currentPhase === 0 || currentPhase === 1) ? 1 : (currentState.technique === '478' ? 1 : 0); 
+            // Note: 4-7-8 hold is after inhale (size 1). Box hold is after inhale (1) OR after exhale (0).
+            // Correction for Box: Phase 1 is hold-full, Phase 3 is hold-empty.
+            if (currentState.technique === 'box' && currentPhase === 3) scaleFactor = 0;
+            
+            else if (pType === 'out') scaleFactor = 1 - easeInOutSine(phaseTime);
+
+            // 2. Draw Box
+            const currentSize = baseSize + (scaleFactor * growthRange);
+            const cornerRadius = currentSize / 4;
+            const x = (width - currentSize) / 2;
+            const y = (height - currentSize) / 2;
+
+            // Box Style
+            drawRoundedRectPath(ctx, x, y, currentSize, currentSize, cornerRadius);
+            ctx.fillStyle = isDark ? 
+                (currentState.technique === 'box' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(52, 211, 153, 0.4)') : 
+                tech.color;
+            
+            // Glow
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(147, 197, 253, 0.8)";
+            ctx.fill();
+            ctx.shadowBlur = 0; // Reset
+
+            // 3. Draw Text
+            ctx.fillStyle = theme.text;
+            ctx.font = "bold 28px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(tech.phases[currentPhase].name, width / 2, height / 2);
+
+            // 4. Draw Orbiting Focus Orb
+            // Map total cycle progress (0-1) to perimeter
+            const totalProgress = cycleProgress / cycleDuration;
+            // Add slight offset so it starts at top center
+            let orbT = totalProgress - 0.25; 
+            if (orbT < 0) orbT += 1;
+
+            const orbPos = getPointOnRect(orbT, x, y, currentSize, currentSize);
+            
+            ctx.beginPath();
+            ctx.arc(orbPos.x, orbPos.y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = theme.orb;
+            ctx.fill();
+            // Orb Glow
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = theme.orb;
+            ctx.stroke();
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- Interaction Logic ---
+        function updateSettings() {
+            // Update Technique
+            currentState.technique = document.getElementById('techniqueSelect').value;
+            
+            // Visibility of Speed Slider
+            const speedControl = document.getElementById('speedControl');
+            if (currentState.technique === '478') {
+                speedControl.style.opacity = '0.3';
+                speedControl.style.pointerEvents = 'none';
+            } else {
+                speedControl.style.opacity = '1';
+                speedControl.style.pointerEvents = 'auto';
+            }
+
+            // Update Phase Duration
+            const val = parseFloat(document.getElementById('speedSlider').value);
+            currentState.phaseDuration = val * 1000;
+            document.getElementById('speedValue').textContent = val + "s / phase";
+
+            // Timer
+            const timerVal = parseInt(document.getElementById('timerSelect').value);
+            if (timerVal > 0) {
+                // Only reset end time if it was infinite or 0 before, 
+                // prevents resetting timer on every speed change
+                if (currentState.sessionEnd === 0) {
+                    currentState.sessionEnd = Date.now() + timerVal;
+                }
+            } else {
+                currentState.sessionEnd = 0;
+            }
+        }
+
+        function resetSession() {
+            currentState.active = true;
+            currentState.startTime = null;
+            currentState.sessionEnd = 0;
+            document.getElementById('overlay').classList.remove('visible');
+            updateSettings(); // Re-apply timer
+            requestAnimationFrame(animate);
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('resize', resize);
+        
+        // Settings Change Listeners
+        ['techniqueSelect', 'timerSelect', 'speedSlider'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                initAudio(); // Try initializing audio on interaction
+                updateSettings();
+            });
+        });
+
+        // Dark Mode
+        document.getElementById('darkModeToggle').addEventListener('change', (e) => {
+            if (e.target.checked) document.body.classList.add('dark-mode');
+            else document.body.classList.remove('dark-mode');
+        });
+
+        // Audio Init on Toggle
+        document.getElementById('audioToggle').addEventListener('change', () => {
+            initAudio();
+        });
+
+        // Tap to Hide UI
+        document.body.addEventListener('click', (e) => {
+            // Ignore if clicking on controls or overlay
+            if (e.target.closest('#ui-container') || e.target.closest('#overlay')) return;
+            
+            const ui = document.getElementById('ui-container');
+            const hint = document.getElementById('tap-hint');
+            ui.classList.toggle('hidden-ui');
+            hint.style.opacity = ui.classList.contains('hidden-ui') ? '0' : '0.7';
+            
+            initAudio(); // Ensure audio context is ready on first tap
+        });
+
+        // Init
+        resize();
+        updateSettings();
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+</html>
